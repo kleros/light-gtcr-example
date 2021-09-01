@@ -1,9 +1,8 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useWeb3React } from "@web3-react/core";
 import { NetworkConnector } from "@web3-react/network-connector";
+import { TCRView } from "./components";
 import "./App.css";
-import { useTCRView } from "./hooks";
-import { formatEther } from "ethers/lib/utils";
 
 const networkConnector = new NetworkConnector({
   urls: { 42: process.env.REACT_APP_JSON_RPC },
@@ -12,9 +11,8 @@ const networkConnector = new NetworkConnector({
 
 function App() {
   const { activate, active } = useWeb3React();
-  const [activating, setActivating] = useState();
   const [error, setError] = useState();
-  const data = useTCRView(process.env.REACT_APP_LIGHT_GTCR_ADDRESS);
+  const [activating, setActivating] = useState();
 
   useEffect(() => {
     if (active || activating) return;
@@ -30,39 +28,31 @@ function App() {
       });
   }, [activate, activating, active]);
 
-  const errored = error || (data && data.tcrError);
+  const onSubmit = useCallback(() => {
+    (async () => {
+      const gtcr = new ethers.Contract(tcrAddress, _gtcr, signer);
+      const enc = new TextEncoder();
+      const fileData = enc.encode(JSON.stringify({ columns, values }));
+      const ipfsEvidenceObject = await ipfsPublish("item.json", fileData);
+      const ipfsEvidencePath = `/ipfs/${
+        ipfsEvidenceObject[1].hash + ipfsEvidenceObject[0].path
+      }`;
 
-  const loading = !data || data.loading || !data.submissionDeposit;
-
-  if (errored)
-    return (
-      <div className="App">
-        <header className="App-header">
-          <p style={{ maxWidth: `500px` }}>
-            <code>{JSON.stringify(errored, null, 2)}</code>
-          </p>
-        </header>
-      </div>
-    );
-
-  if (loading)
-    return (
-      <div className="App">
-        <header className="App-header">Loading...</header>
-      </div>
-    );
+      // Request signature and submit.
+      const tx = await gtcr.addItem(ipfsEvidencePath, {
+        value: submissionDeposit,
+      });
+    })();
+  }, []);
 
   return (
     <div className="App">
       <header className="App-header">
-        <p>
-          Deposit{" "}
-          <code>
-            {formatEther(data.submissionDeposit ? data.submissionDeposit : 0)}{" "}
-            ETH
-          </code>
-        </p>
+        <h1>Light Curate Example</h1>
       </header>
+      {error}
+      <TCRView />
+      <button onClick={onSubmit}>Submit New Item</button>
     </div>
   );
 }
